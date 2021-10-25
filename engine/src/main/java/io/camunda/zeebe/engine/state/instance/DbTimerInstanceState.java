@@ -91,7 +91,9 @@ public final class DbTimerInstanceState implements MutableTimerInstanceState {
           }
 
           if (!consumed) {
-            nextDueDate = dueDate.getValue();
+            synchronized (this) {
+              nextDueDate = dueDate.getValue();
+            }
           }
           return consumed;
         });
