@@ -26,7 +26,7 @@ final class PartitionTransitionProcess {
   private static final Logger LOG = Loggers.SYSTEM_LOGGER;
 
   private final List<PartitionTransitionStep> pendingSteps;
-  private final Stack<PartitionTransitionStep> startedSteps = new Stack<>();
+  private final Stack<PartitionTransitionStep> stepsToCleanUp = new Stack<>();
   private final ConcurrencyControl concurrencyControl;
   private final PartitionTransitionContext context;
   private final long term;
@@ -40,6 +40,7 @@ final class PartitionTransitionProcess {
       final long term,
       final Role role) {
     this.pendingSteps = new ArrayList<>(requireNonNull(pendingSteps));
+    pendingSteps.forEach(stepsToCleanUp::push);
     this.concurrencyControl = requireNonNull(concurrencyControl);
     this.context = requireNonNull(context);
     this.term = term;
@@ -68,7 +69,6 @@ final class PartitionTransitionProcess {
     concurrencyControl.run(
         () -> {
           final var nextStep = pendingSteps.remove(0);
-          startedSteps.push(nextStep);
 
           LOG.info(
               format("Transition to %s on term %d - executing %s", role, term, nextStep.getName()));
@@ -97,14 +97,15 @@ final class PartitionTransitionProcess {
     proceedWithTransition(future);
   }
 
+  // TODO transitively rename to prepare in develop branch
   ActorFuture<Void> cleanup(final long newTerm, final Role newRole) {
     LOG.info(
         format(
-            "Cleanup of transition to %s on term %d starting (in preparation for new transition to %s)",
+            "Cleanup before transition to %s on term %d starting (in preparation for new transition to %s)",
             role, term, newRole));
     final ActorFuture<Void> cleanupFuture = concurrencyControl.createFuture();
 
-    if (startedSteps.isEmpty()) {
+    if (stepsToCleanUp.isEmpty()) {
       LOG.info("No steps to clean up");
       cleanupFuture.complete(null);
     } else {
@@ -117,11 +118,11 @@ final class PartitionTransitionProcess {
       final ActorFuture<Void> future, final long newTerm, final Role newRole) {
     concurrencyControl.run(
         () -> {
-          final var nextCleanupStep = startedSteps.pop();
+          final var nextCleanupStep = stepsToCleanUp.pop();
 
           LOG.info(
               format(
-                  "Cleanup of transition to %s on term %d - executing %s",
+                  "Cleanup before transition to %s on term %d - executing %s",
                   role, term, nextCleanupStep.getName()));
 
           nextCleanupStep
@@ -142,8 +143,8 @@ final class PartitionTransitionProcess {
       return;
     }
 
-    if (startedSteps.isEmpty()) {
-      LOG.info(format("Cleanup of transition to %s on term %d completed", role, term));
+    if (stepsToCleanUp.isEmpty()) {
+      LOG.info(format("Cleanup before transition to %s on term %d completed", role, term));
       future.complete(null);
 
       return;
