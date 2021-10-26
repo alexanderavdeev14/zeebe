@@ -335,13 +335,8 @@ class NewPartitionTransitionImplTest {
   @Test // regression test for #8044
   void shouldCloseAllCreatedInstancesOfStreamProcessor() {
     // given
-    final var actorScheduler = ActorScheduler.newActorScheduler().build();
-    actorScheduler.start();
-    final var actor = new Actor() {};
-
-    actorScheduler.submitActor(actor);
-
     when(mockContext.getComponentHealthMonitor()).thenReturn(mock(HealthMonitor.class));
+    when(mockContext.getConcurrencyControl()).thenReturn(TEST_CONCURRENCY_CONTROL);
 
     final var mockStreamProcessor1 = mock(StreamProcessor.class);
     when(mockStreamProcessor1.openAsync(anyBoolean()))
@@ -378,7 +373,7 @@ class NewPartitionTransitionImplTest {
     final var sut =
         new NewPartitionTransitionImpl(
             of(mockStepBefore, streamProcessorStep, mockStepAfter), mockContext);
-    sut.setConcurrencyControl(actor);
+    sut.setConcurrencyControl(TEST_CONCURRENCY_CONTROL);
 
     // when
 
@@ -413,15 +408,9 @@ class NewPartitionTransitionImplTest {
     testFutureOfFirstStepInSecondTransition.complete(null); // resume transition 2
 
     // then
-    assertThat(transition1Future).succeedsWithin(ofSeconds(10));
-    assertThat(transition2Future).succeedsWithin(ofSeconds(10));
-    assertThat(transition3Future).succeedsWithin(ofSeconds(10));
 
     verify(mockStreamProcessor1).closeAsync(); // should fail
     verify(mockStreamProcessor2, never()).closeAsync();
-
-    // cleanup
-    actorScheduler.stop();
   }
 
   private final class WaitingTransitionStep implements PartitionTransitionStep {
