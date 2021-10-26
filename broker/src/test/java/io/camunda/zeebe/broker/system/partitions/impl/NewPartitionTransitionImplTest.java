@@ -435,7 +435,7 @@ class NewPartitionTransitionImplTest {
     assertThat(transition3Future).succeedsWithin(ofSeconds(10));
 
     verify(mockStreamProcessorBuilder, times(2)).build();
-    verify(mockStreamProcessor1).closeAsync(); // should fail
+    verify(mockStreamProcessor1).closeAsync();
     verify(mockStreamProcessor2, never()).closeAsync();
 
     // cleanup

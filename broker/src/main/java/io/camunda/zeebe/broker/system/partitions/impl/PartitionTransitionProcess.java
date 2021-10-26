@@ -16,9 +16,10 @@ import io.camunda.zeebe.broker.system.partitions.PartitionTransitionContext;
 import io.camunda.zeebe.broker.system.partitions.PartitionTransitionStep;
 import io.camunda.zeebe.util.sched.ConcurrencyControl;
 import io.camunda.zeebe.util.sched.future.ActorFuture;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
-import java.util.Stack;
 import org.slf4j.Logger;
 
 final class PartitionTransitionProcess {
@@ -26,7 +27,7 @@ final class PartitionTransitionProcess {
   private static final Logger LOG = Loggers.SYSTEM_LOGGER;
 
   private final List<PartitionTransitionStep> pendingSteps;
-  private final Stack<PartitionTransitionStep> stepsToCleanUp = new Stack<>();
+  private final Deque<PartitionTransitionStep> stepsToCleanUp = new ArrayDeque<>();
   private final ConcurrencyControl concurrencyControl;
   private final PartitionTransitionContext context;
   private final long term;
@@ -101,7 +102,7 @@ final class PartitionTransitionProcess {
   ActorFuture<Void> cleanup(final long newTerm, final Role newRole) {
     LOG.info(
         format(
-            "Cleanup before transition to %s on term %d starting (in preparation for new transition to %s)",
+            "Preparation before transition to %s on term %d starting (in preparation for new transition to %s)",
             role, term, newRole));
     final ActorFuture<Void> cleanupFuture = concurrencyControl.createFuture();
 
@@ -122,7 +123,7 @@ final class PartitionTransitionProcess {
 
           LOG.info(
               format(
-                  "Cleanup before transition to %s on term %d - executing %s",
+                  "Preparation before transition to %s on term %d - executing %s",
                   role, term, nextCleanupStep.getName()));
 
           nextCleanupStep
@@ -144,7 +145,7 @@ final class PartitionTransitionProcess {
     }
 
     if (stepsToCleanUp.isEmpty()) {
-      LOG.info(format("Cleanup before transition to %s on term %d completed", role, term));
+      LOG.info(format("Preparation before transition to %s on term %d completed", role, term));
       future.complete(null);
 
       return;
