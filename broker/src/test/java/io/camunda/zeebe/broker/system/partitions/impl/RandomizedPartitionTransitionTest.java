@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.framework;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -113,6 +114,8 @@ public class RandomizedPartitionTransitionTest {
           .hasSizeLessThan(2);
     } finally {
       actorScheduler.stop();
+      framework()
+          .clearInlineMocks(); // prevent memory leaks from statically held mocks and stubbings
     }
   }
 
@@ -137,7 +140,7 @@ public class RandomizedPartitionTransitionTest {
 
     return operation
         .list()
-        .ofMaxSize(3)
+        .ofMaxSize(4)
         .filter(list -> list.stream().anyMatch(RequestTransition.class::isInstance))
         .map(
             list -> {
