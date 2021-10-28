@@ -48,16 +48,33 @@ public class RandomizedPartitionTransitionTest {
   private static final Logger LOGGER =
       LoggerFactory.getLogger(RandomizedPartitionTransitionTest.class);
 
+  /**
+   * Verifies that during transitions at most one {@code StreamProcessor} is created. It sets up the
+   * following transition chain:
+   *
+   * <ol>
+   *   <li>Pausable dummy step
+   *   <li>{@code StreamProcessorTransitionStep}
+   * </ol>
+   *
+   * The first step is there to manipulate execution order. In particular, the step will wait for a
+   * countdown latch thus pausing transition execution. This in turn, allows scheduling successive
+   * transition which cancel their predecessors
+   *
+   * @param operations the operations to run
+   */
   @Property(generation = GenerationMode.EXHAUSTIVE)
   void atMostOneStreamProcessorIsRunningAtAnyTime(
       @ForAll("testOperations") final List<TestOperation> operations) {
     LOGGER.debug(
-        format("Testing property 'atMostOneStreamProcessorIsRunningAtAnyTime'  %s", operations));
+        format(
+            "Testing property 'atMostOneStreamProcessorIsRunningAtAnyTime' on sequence %s",
+            operations));
 
     final var actorScheduler = ActorScheduler.newActorScheduler().build();
     actorScheduler.start();
     try {
-      final var actor = new Actor() {};
+      final var actor = new TestActor();
       actorScheduler.submitActor(actor);
 
       final var instanceTracker =
@@ -89,25 +106,7 @@ public class RandomizedPartitionTransitionTest {
           new NewPartitionTransitionImpl(of(firstStep, streamProcessorStep), mockContext);
       sut.setConcurrencyControl(actor);
 
-      final var pausedSteps = new ArrayList<CountDownLatch>();
-      ActorFuture<Void> latestTransitionFuture = null;
-
-      for (int index = 0; index < operations.size(); index++) {
-        final var operation = operations.get(index);
-
-        if (operation instanceof RequestTransition) {
-          final var requestTransition = (RequestTransition) operation;
-
-          latestTransitionFuture = sut.transitionTo(index, requestTransition.role);
-          if (requestTransition.isPause()) {
-            pausedSteps.add(requestTransition.getCountDownLatch());
-          } else {
-            requestTransition.getCountDownLatch().countDown();
-          }
-        } else { // catch up operation
-          catchUp(latestTransitionFuture, pausedSteps);
-        }
-      }
+      runOperations(operations, sut);
 
       assertThat(instanceTracker.getOpenedInstances())
           .describedAs("Active stream processors at end of transition sequence")
@@ -119,14 +118,41 @@ public class RandomizedPartitionTransitionTest {
     }
   }
 
+  private void runOperations(
+      final List<TestOperation> operations, final NewPartitionTransitionImpl sut) {
+    final var pausedSteps = new ArrayList<CountDownLatch>();
+    ActorFuture<Void> latestTransitionFuture = null;
+
+    for (int index = 0; index < operations.size(); index++) {
+      final var operation = operations.get(index);
+
+      if (operation instanceof RequestTransition) {
+        final var requestTransition = (RequestTransition) operation;
+
+        latestTransitionFuture = sut.transitionTo(index, requestTransition.getRole());
+        if (requestTransition.isPause()) {
+          pausedSteps.add(requestTransition.getCountDownLatch());
+        } else {
+          requestTransition.getCountDownLatch().countDown();
+        }
+      } else { // catch up operation
+        catchUp(latestTransitionFuture, pausedSteps);
+      }
+    }
+  }
+
   private void catchUp(
       final ActorFuture<Void> latestTransitionFuture, final ArrayList<CountDownLatch> pausedSteps) {
     if (latestTransitionFuture == null) {
       return;
     }
-    while (!latestTransitionFuture.isDone()) {
+    while (!latestTransitionFuture.isDone()) { // wait for last transition to complete
       final var stepsToResume = new ArrayList<>(pausedSteps);
       pausedSteps.clear();
+      /* Unblock any steps that have been paused.
+       * This needs to be done repeatedly, because resuming one paused step
+       * might lead to execution of another step which is also scheduled to pause.
+       */
       stepsToResume.forEach(CountDownLatch::countDown);
     }
   }
@@ -140,7 +166,7 @@ public class RandomizedPartitionTransitionTest {
 
     return operation
         .list()
-        .ofMaxSize(4)
+        .ofMaxSize(3)
         .filter(list -> list.stream().anyMatch(RequestTransition.class::isInstance))
         .map(
             list -> {
@@ -357,6 +383,14 @@ public class RandomizedPartitionTransitionTest {
     @Override
     public String getName() {
       return getClass().getSimpleName();
+    }
+  }
+
+  private static class TestActor extends Actor {
+
+    @Override
+    public String getName() {
+      return "RandomizedPartitionTransitionTest.testActor";
     }
   }
 
