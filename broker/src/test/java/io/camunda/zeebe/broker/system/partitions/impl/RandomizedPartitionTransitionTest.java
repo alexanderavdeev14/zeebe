@@ -14,6 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -75,6 +76,14 @@ public class RandomizedPartitionTransitionTest {
       final var mockContext = mock(PartitionTransitionContext.class);
       when(mockContext.getComponentHealthMonitor()).thenReturn(mock(HealthMonitor.class));
 
+      // a shorthand for "let the getter return the last value that was passed to the setter"
+      doAnswer(
+              answer ->
+                  when(mockContext.getStreamProcessor())
+                      .thenReturn((StreamProcessor) answer.getArguments()[0]))
+          .when(mockContext)
+          .setStreamProcessor(any());
+
       final var sut =
           new NewPartitionTransitionImpl(of(firstStep, streamProcessorStep), mockContext);
       sut.setConcurrencyControl(actor);
@@ -123,8 +132,6 @@ public class RandomizedPartitionTransitionTest {
   Arbitrary<List<TestOperation>> testOperations() {
     final var kind = Arbitraries.of(TestOperationKind.class);
     final var role = Arbitraries.of(RaftServer.Role.class);
-    // if we can exclude some roles:   .filter(value -> value != Role.PASSIVE && value !=
-    // Role.PROMOTABLE);
 
     final var operation = Combinators.combine(kind, role).as(this::createTestOperation);
 
