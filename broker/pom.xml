@@ -232,7 +232,7 @@
     </dependency>
     <dependency>
       <groupId>net.jqwik</groupId>
-      <artifactId>jqwik-api</artifactId>
+      <artifactId>jqwik</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
